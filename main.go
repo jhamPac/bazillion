@@ -17,6 +17,38 @@ type FS struct {
 	archive *zip.Reader
 }
 
+// Root returns the root inode
+func (f *FS) Root() (fs.Node, error) {
+	n := &Dir{
+		archive: f.archive,
+	}
+	return n, nil
+}
+
+// Dir represents a directory
+type Dir struct {
+	archive *zip.Reader
+	file    *zip.File
+}
+
+// Attr return the file attributes
+func (d *Dir) Attr() fuse.Attr {
+	if d.file == nil {
+		return fuse.Attr{Mode: os.ModeDir | 0755}
+	}
+	return zipAttr(d.file)
+}
+
+func zipAttr(f *zip.File) fuse.Attr {
+	return fuse.Attr{
+		Size:   f.UncompressedSize64,
+		Mode:   f.Mode(),
+		Mtime:  f.ModTime(),
+		Ctime:  f.ModTime(),
+		CrTime: f.ModTime(),
+	}
+}
+
 var _ fs.FS = (*FS)(nil)
 var progName = filepath.Base(os.Args[0])
 
