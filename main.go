@@ -1,13 +1,23 @@
 package main
 
 import (
+	"archive/zip"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
 )
 
+// FS fuse struct that holds a zip reader
+type FS struct {
+	archive *zip.Reader
+}
+
+var _ fs.FS = (*FS)(nil)
 var progName = filepath.Base(os.Args[0])
 
 func usage() {
@@ -33,4 +43,32 @@ func main() {
 	if err := mount(path, mountpoint); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func mount(path, mountpoint string) error {
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+
+	c, err := fuse.Mount(mountpoint)
+	if err != nil {
+		return err
+	}
+	c.Close()
+
+	filesys := &FS{
+		archive: &archive.Reader,
+	}
+	if err := fs.Serve(c, filesys); err != nil {
+		return err
+	}
+
+	<-c.Ready
+	if err := c.MountError; err != nil {
+		return err
+	}
+
+	return nil
 }
