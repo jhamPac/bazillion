@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -16,5 +17,20 @@ func usage() {
 }
 
 func main() {
+	log.SetFlags(0)
+	log.SetPrefix(progName + ": ")
 
+	flag.Usage = usage
+	flag.Parse()
+
+	if flag.NArg() != 2 {
+		usage()
+		os.Exit(2)
+	}
+
+	path := flag.Arg(0)
+	mountpoint := flag.Arg(1)
+	if err := mount(path, mountpoint); err != nil {
+		log.Fatal(err)
+	}
 }
