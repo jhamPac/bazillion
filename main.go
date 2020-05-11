@@ -2,8 +2,10 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -39,6 +41,60 @@ func (d *Dir) Attr() fuse.Attr {
 	return zipAttr(d.file)
 }
 
+// Lookup a directory given a ctx
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
+	path := req.Name
+	if d.file != nil {
+		path = d.file.Name + path
+	}
+
+	for _, f := range d.archive.File {
+		switch {
+		case f.Name == path:
+			child := &File{file: f}
+			return child, nil
+		case f.Name[:len(f.Name)-1] == path && f.Name[len(f.Name)-1] == '/':
+			child := &Dir{
+				archive: d.archive,
+				file:    f,
+			}
+			return child, nil
+		}
+	}
+	return nil, fuse.ENOENT
+}
+
+// File that represents a file
+type File struct {
+	file *zip.File
+}
+
+var _ fs.Node = (*File)(nil)
+
+// Attr returns the attributes for file
+func (f *File) Attr() fuse.Attr {
+	return zipAttr(f.file)
+}
+
+var _ = fs.NodeOpener(&File{})
+
+// Open a file and return a handle
+func (f *File) Open(req *fuse.OpenRequest, resp *fuse.OpenResponse, intr fs.Intr) (fs.Handle, fuse.Error) {
+	r, err := f.file.Open()
+	if err != nil {
+		return nil, err
+	}
+	resp.Flags |= fuse.OpenNonSeekable
+	return &FileHandle{r: r}, nil
+}
+
+// FileHandle for pointers to files
+type FileHandle struct {
+	r io.ReadCloser
+}
+
+var _ fs.Handle = (*FileHandle)(nil)
+
 func zipAttr(f *zip.File) fuse.Attr {
 	return fuse.Attr{
 		Size:   f.UncompressedSize64,
@@ -51,6 +107,7 @@ func zipAttr(f *zip.File) fuse.Attr {
 
 var _ fs.FS = (*FS)(nil)
 var progName = filepath.Base(os.Args[0])
+var _ = fs.NodeRequestLookuper(&Dir{})
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage of %s:\n", progName)
